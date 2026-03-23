@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>ResumeML — Login / Register</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+
+/* reset */
+*{box-sizing:border-box;margin:0;padding:0}
+::-webkit-scrollbar{display:none}
+
+/* root */
+body{
+  min-height:100vh;
+  background:#0c0b10;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Instrument Sans',sans-serif;
+  overflow:hidden;
+  position:relative;
+}
+
+/* animated bg blobs */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(ellipse 60% 50% at 20% 20%, rgba(124,58,237,.18) 0%,transparent 60%),
+    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(167,139,250,.10) 0%,transparent 60%),
+    radial-gradient(ellipse 40% 30% at 60% 10%, rgba(109,40,217,.12) 0%,transparent 50%);
+}
+
+/* floating particles */
+.particles{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.particle{
+  position:absolute;border-radius:50%;
+  background:rgba(167,139,250,.15);
+  animation:floatUp linear infinite;
+}
+@keyframes floatUp{
+  0%  {transform:translateY(100vh) scale(0);opacity:0}
+  10% {opacity:1}
+  90% {opacity:.5}
+  100%{transform:translateY(-100px) scale(1.2);opacity:0}
+}
+
+/* container */
+.container{
+  position:relative;z-index:1;
+  width:800px;height:500px;
+  background:#16151e;
+  border-radius:24px;
+  border:1px solid #2a2838;
+  box-shadow:0 0 0 1px #252330, 0 25px 80px rgba(0,0,0,.7),
+             0 0 80px rgba(124,58,237,.15);
+  overflow:hidden;
+}
+
+/* form box */
+.form-box{
+  position:absolute;top:0;height:100%;width:50%;
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:40px 36px;
+  background:#16151e;
+  transition:left .65s cubic-bezier(.68,-.55,.27,1.55),
+             opacity .65s ease;
+  z-index:2;
+}
+.form-box.login   {left:0; opacity:1; pointer-events:all}
+.form-box.register{left:50%; opacity:0; pointer-events:none}
+
+.container.active .form-box.login   {left:-50%; opacity:0; pointer-events:none}
+.container.active .form-box.register{left:50%;  opacity:1; pointer-events:all; z-index:3}
+
+/* form title */
+.form-title{
+  font-family:'Fraunces',serif;font-weight:700;font-size:1.85rem;
+  color:#ede8ff;letter-spacing:-.5px;margin-bottom:20px;
+  text-align:center;
+}
+.form-box.register .form-title{margin-bottom:14px}
+.form-box.register .logo{margin-bottom:12px}
+
+/* input group */
+.input-group{
+  position:relative;width:100%;margin-bottom:12px;
+}
+.input-group input{
+  width:100%;height:46px;
+  background:#0f0e17;
+  border:1.5px solid #2a2838;
+  border-radius:10px;
+  padding:0 44px 0 16px;
+  color:#ede8ff;font-size:.87rem;
+  font-family:'Instrument Sans',sans-serif;
+  outline:none;transition:all .25s;
+  -webkit-text-fill-color:#ede8ff;
+}
+.input-group input::placeholder{color:#4a4760;font-size:.84rem}
+.input-group input:focus{
+  border-color:#7c3aed;
+  background:#130f1f;
+  box-shadow:0 0 0 3px rgba(124,58,237,.15);
+}
+/* Fix browser autofill white background */
+.input-group input:-webkit-autofill,
+.input-group input:-webkit-autofill:hover,
+.input-group input:-webkit-autofill:focus{
+  -webkit-box-shadow:0 0 0 1000px #0f0e17 inset;
+  -webkit-text-fill-color:#ede8ff;
+  caret-color:#ede8ff;
+  border-color:#2a2838;
+}
+.input-group .icon{
+  position:absolute;right:14px;top:50%;transform:translateY(-50%);
+  font-size:15px;color:#4a4760;pointer-events:none;transition:color .25s;
+}
+.input-group input:focus ~ .icon{color:#a78bfa}
+
+/* submit button */
+.btn-submit{
+  width:100%;height:46px;margin-top:6px;
+  background:linear-gradient(135deg,#7c3aed,#6d28d9);
+  border:none;border-radius:10px;
+  color:#fff;font-family:'Instrument Sans',sans-serif;
+  font-weight:700;font-size:.95rem;cursor:pointer;
+  transition:all .3s;letter-spacing:.3px;
+  box-shadow:0 4px 20px rgba(124,58,237,.35);
+}
+.btn-submit:hover{
+  background:linear-gradient(135deg,#8b5cf6,#7c3aed);
+  transform:translateY(-2px);
+  box-shadow:0 8px 28px rgba(124,58,237,.5);
+}
+.btn-submit:active{transform:translateY(0)}
+
+/* loading state */
+.btn-submit.loading{
+  pointer-events:none;opacity:.8;
+}
+.btn-submit.loading::after{
+  content:'';display:inline-block;
+  width:16px;height:16px;margin-left:10px;
+  border:2px solid rgba(255,255,255,.3);
+  border-top-color:#fff;border-radius:50%;
+  animation:spin .8s linear infinite;
+  vertical-align:middle;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* switch link */
+.switch-text{
+  margin-top:14px;font-size:.8rem;color:#7e7a95;text-align:center;
+}
+.switch-text a{
+  color:#a78bfa;font-weight:600;cursor:pointer;
+  text-decoration:none;transition:color .2s;border-bottom:1px solid transparent;
+}
+.switch-text a:hover{color:#c4b5fd;border-bottom-color:#a78bfa}
+
+/* error / success messages */
+.msg{
+  width:100%;padding:10px 14px;border-radius:8px;
+  font-size:.78rem;margin-bottom:14px;display:none;
+  font-weight:500;line-height:1.4;
+}
+.msg.error {background:rgba(220,38,38,.1);border:1px solid rgba(220,38,38,.25);color:#f87171}
+.msg.success{background:rgba(22,163,74,.1);border:1px solid rgba(22,163,74,.25);color:#4ade80}
+.msg.show  {display:block}
+
+/*  WELCOME PANEL (sliding overlay)  */
+.welcome-panel{
+  position:absolute;top:0;
+  left:50%;            /* starts on RIGHT half — covers login panel's right */
+  width:50%;height:100%;
+  z-index:10;
+  border-radius:0 20px 20px 0;
+  overflow:hidden;
+  transition:left .65s cubic-bezier(.68,-.55,.27,1.55),
+             border-radius .65s cubic-bezier(.68,-.55,.27,1.55);
+}
+/* On active (register view) — panel slides to LEFT half */
+.container.active .welcome-panel{
+  left:0;
+  border-radius:20px 0 0 20px;
+}
+
+/* Panel gradient — matches project purple theme */
+.welcome-panel-bg{
+  position:absolute;inset:0;
+  background:linear-gradient(135deg,#4c1d95 0%,#7c3aed 45%,#6d28d9 100%);
+}
+/* Decorative circles */
+.panel-circle{
+  position:absolute;border-radius:50%;
+  border:1px solid rgba(255,255,255,.08);
+}
+.circle-1{width:300px;height:300px;top:-80px;right:-80px}
+.circle-2{width:200px;height:200px;bottom:-60px;left:-60px}
+.circle-3{width:120px;height:120px;bottom:60px;right:30px;
+           background:rgba(255,255,255,.03)}
+
+/* Glowing orb at bottom */
+.panel-glow{
+  position:absolute;bottom:-60px;left:50%;transform:translateX(-50%);
+  width:280px;height:180px;border-radius:50%;
+  background:radial-gradient(ellipse,rgba(167,139,250,.3) 0%,transparent 70%);
+  pointer-events:none;
+}
+
+/* Panel text */
+.welcome-content{
+  position:relative;z-index:2;
+  height:100%;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:40px 32px;text-align:center;
+}
+.welcome-title{
+  font-family:'Fraunces',serif;font-weight:700;
+  font-size:1.7rem;color:#fff;letter-spacing:-.5px;
+  margin-bottom:14px;line-height:1.2;
+}
+.welcome-sub{
+  color:rgba(255,255,255,.75);font-size:.85rem;
+  line-height:1.75;margin-bottom:28px;
+}
+
+/* Sign-in / Sign-up toggle button on panel */
+.panel-btn{
+  padding:11px 32px;border-radius:99px;
+  border:2px solid rgba(255,255,255,.7);
+  background:transparent;color:#fff;
+  font-family:'Instrument Sans',sans-serif;
+  font-weight:600;font-size:.88rem;
+  cursor:pointer;transition:all .3s;letter-spacing:.3px;
+}
+.panel-btn:hover{background:rgba(255,255,255,.15);border-color:#fff}
+
+/* logo */
+.logo{
+  display:flex;align-items:center;gap:10px;margin-bottom:26px;
+}
+.logo-icon{
+  width:36px;height:36px;border-radius:9px;
+  background:linear-gradient(135deg,#7c3aed,#6d28d9);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:900;font-size:14px;color:#fff;
+  box-shadow:0 4px 14px rgba(124,58,237,.4);
+}
+.logo-name{
+  font-family:'Fraunces',serif;font-weight:700;
+  font-size:1.1rem;color:#ede8ff;letter-spacing:-.3px;
+}
+
+/* password toggle */
+.toggle-pass{cursor:pointer!important;pointer-events:all!important}
+
+/* strength meter */
+.strength-wrap{width:100%;margin-top:-6px;margin-bottom:10px;display:none}
+.strength-wrap.show{display:block}
+.strength-bar{height:3px;background:#252330;border-radius:3px;overflow:hidden;margin-bottom:4px}
+.strength-fill{height:100%;border-radius:3px;width:0;transition:width .4s,background .4s}
+.strength-label{font-size:.68rem;color:#504d62}
+
+/* remember me */
+.remember-row{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;margin-bottom:4px;
+}
+.remember-row label{
+  display:flex;align-items:center;gap:7px;cursor:pointer;
+  font-size:.78rem;color:#7e7a95;
+}
+.remember-row input[type=checkbox]{
+  width:14px;height:14px;accent-color:#7c3aed;cursor:pointer;
+}
+.forgot-link{font-size:.78rem;color:#a78bfa;cursor:pointer;text-decoration:none;transition:color .2s}
+.forgot-link:hover{color:#c4b5fd}
+
+/* divider */
+.divider{
+  display:flex;align-items:center;gap:10px;
+  width:100%;margin:16px 0 14px;
+}
+.divider-line{flex:1;height:1px;background:#252330}
+.divider-text{font-size:.72rem;color:#504d62;white-space:nowrap}
+
+
+/* responsive — tablet */
+@media(max-width:680px){
+  body{align-items:flex-start;padding:24px 16px}
+
+  .container{
+    width:100%;max-width:420px;margin:0 auto;
+    height:auto;min-height:0;border-radius:18px;
+  }
+  .welcome-panel{display:none!important}
+
+  .form-box{
+    position:relative!important;width:100%!important;
+    left:0!important;opacity:1!important;
+    pointer-events:all!important;padding:32px 24px;
+  }
+  .form-box.register{display:none}
+  .container.active .form-box.login{display:none}
+  .container.active .form-box.register{display:flex;left:0!important}
+
+  .mobile-switch{display:block!important}
+  .form-title{font-size:1.6rem;margin-bottom:18px}
+  .logo{margin-bottom:18px}
+  .btn-submit{height:50px;font-size:1rem}
+}
+
+/* responsive — small phones */
+@media(max-width:400px){
+  body{padding:16px 12px}
+  .form-box{padding:24px 16px}
+  .form-title{font-size:1.4rem}
+  .input-group input{height:44px;font-size:.84rem}
+  .modal-box{padding:24px 18px}
+}
+
+.mobile-switch{display:none;text-align:center;margin-top:12px;font-size:.8rem;color:#7e7a95}
+.mobile-switch a{color:#a78bfa;font-weight:600;cursor:pointer}
+
+
+/* forgot password modal */
+.modal-overlay{
+  position:fixed;inset:0;z-index:100;
+  background:rgba(0,0,0,.65);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;
+  transition:opacity .3s;
+}
+.modal-overlay.show{opacity:1;pointer-events:all}
+
+.modal-box{
+  background:#16151e;border:1px solid #2a2838;
+  border-radius:20px;padding:32px 28px;
+  width:360px;max-width:90vw;
+  box-shadow:0 24px 64px rgba(0,0,0,.6);
+  transform:translateY(20px);transition:transform .3s;
+  position:relative;
+}
+.modal-overlay.show .modal-box{transform:translateY(0)}
+
+.modal-title{
+  font-family:'Fraunces',serif;font-weight:700;
+  font-size:1.4rem;color:#ede8ff;margin-bottom:6px;
+}
+.modal-sub{font-size:.82rem;color:#7e7a95;margin-bottom:20px;line-height:1.6}
+
+.modal-close{
+  position:absolute;top:14px;right:16px;
+  background:transparent;border:none;color:#504d62;
+  font-size:18px;cursor:pointer;line-height:1;
+  transition:color .2s;
+}
+.modal-close:hover{color:#ede8ff}
+
+/* the new temp password reveal box */
+.temp-pass-box{
+  background:#0f0e17;border:1px solid rgba(124,58,237,.35);
+  border-radius:10px;padding:14px 16px;margin:14px 0;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.temp-pass-val{
+  font-family:monospace;font-size:1rem;
+  font-weight:700;color:#a78bfa;letter-spacing:2px;
+}
+.copy-btn{
+  padding:5px 12px;border-radius:7px;border:1px solid rgba(124,58,237,.3);
+  background:rgba(124,58,237,.1);color:#a78bfa;
+  font-size:.72rem;font-weight:600;cursor:pointer;
+  transition:all .2s;white-space:nowrap;
+}
+.copy-btn:hover{background:rgba(124,58,237,.2)}
+
+</style>
+</head>
+<body>
+
+<!-- forgot password modal -->
+<div class="modal-overlay" id="forgotOverlay">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeForgot()">✕</button>
+
+    <!-- step 1: enter email -->
+    <div id="forgotStep1">
+      <div class="modal-title">Reset Password</div>
+      <div class="modal-sub">
+        Enter the email address you registered with.<br>
+        We'll generate a temporary password for you.
+      </div>
+      <div class="msg error"   id="forgotError"></div>
+      <div class="msg success" id="forgotSuccess"></div>
+      <div class="input-group" style="margin-bottom:16px">
+        <input type="email" id="forgotEmail" placeholder="Your registered email"
+               onkeydown="if(event.key==='Enter') doForgotPassword()"/>
+        <span class="icon">✉️</span>
+      </div>
+      <button class="btn-submit" id="forgotBtn" onclick="doForgotPassword()">
+        Send Temporary Password
+      </button>
+    </div>
+
+    <!-- step 2: show the temp password -->
+    <div id="forgotStep2" style="display:none">
+      <div class="modal-title">✅ Password Reset</div>
+      <div class="modal-sub">
+        Your temporary password has been set.<br>
+        Copy it, log in, then change it from your profile.
+      </div>
+      <div class="temp-pass-box">
+        <span class="temp-pass-val" id="tempPassDisplay"></span>
+        <button class="copy-btn" onclick="copyTempPass()">📋 Copy</button>
+      </div>
+      <div style="font-size:.72rem;color:#504d62;margin-bottom:18px">
+        This password works right now. Use it to log in.
+      </div>
+      <button class="btn-submit" onclick="closeForgotGoLogin()">Go to Login →</button>
+    </div>
+  </div>
+</div>
+<div class="particles" id="particles"></div>
+
+<!-- main container -->
+<div class="container" id="container">
+
+  <!-- login form -->
+  <div class="form-box login" id="loginBox">
+    <div class="logo">
+      <div class="logo-icon">ML</div>
+      <span class="logo-name">ResumeML</span>
+    </div>
+    <div class="form-title">Login</div>
+
+    <div class="msg error" id="loginError"></div>
+    <div class="msg success" id="loginSuccess"></div>
+
+    <div class="input-group">
+      <input type="text" id="loginUsername" placeholder="Username" autocomplete="username"/>
+      <span class="icon">👤</span>
+    </div>
+    <div class="input-group">
+      <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password"/>
+      <span class="icon toggle-pass" onclick="togglePass('loginPassword',this)">🔒</span>
+    </div>
+    <div class="remember-row">
+      <label><input type="checkbox" id="rememberMe"/> Remember me</label>
+      <a class="forgot-link" onclick="showForgot()">Forgot password?</a>
+    </div>
+    <button class="btn-submit" id="loginBtn" onclick="doLogin()">Login</button>
+    <p class="switch-text">Don't have an account? <a onclick="switchToRegister()">Register</a></p>
+    <p class="mobile-switch">Don't have an account? <a onclick="switchToRegister()">Register here</a></p>
+  </div>
+
+  <!-- register form -->
+  <div class="form-box register" id="registerBox">
+    <div class="logo">
+      <div class="logo-icon">ML</div>
+      <span class="logo-name">ResumeML</span>
+    </div>
+    <div class="form-title">Register</div>
+
+    <div class="msg error"   id="registerError"></div>
+    <div class="msg success" id="registerSuccess"></div>
+
+    <div class="input-group">
+      <input type="text" id="regUsername" placeholder="Username" autocomplete="username"/>
+      <span class="icon">👤</span>
+    </div>
+    <div class="input-group">
+      <input type="email" id="regEmail" placeholder="Email" autocomplete="email"/>
+      <span class="icon">✉️</span>
+    </div>
+    <div class="input-group">
+      <input type="password" id="regPassword" placeholder="Password"
+             autocomplete="new-password" oninput="checkStrength(this.value)"/>
+      <span class="icon toggle-pass" onclick="togglePass('regPassword',this)">🔒</span>
+    </div>
+    <div class="strength-wrap" id="strengthWrap">
+      <div class="strength-bar"><div class="strength-fill" id="strengthFill"></div></div>
+      <div class="strength-label" id="strengthLabel">Password strength</div>
+    </div>
+    <div class="input-group">
+      <input type="password" id="regConfirm" placeholder="Confirm Password" autocomplete="new-password"/>
+      <span class="icon">🔒</span>
+    </div>
+    <button class="btn-submit" id="registerBtn" onclick="doRegister()">Register</button>
+    <p class="switch-text">Already have an account? <a onclick="switchToLogin()">Sign In</a></p>
+    <p class="mobile-switch">Already have an account? <a onclick="switchToLogin()">Sign in here</a></p>
+  </div>
+
+  <!-- welcome panel -->
+  <div class="welcome-panel" id="welcomePanel">
+    <div class="welcome-panel-bg"></div>
+    <div class="panel-circle circle-1"></div>
+    <div class="panel-circle circle-2"></div>
+    <div class="panel-circle circle-3"></div>
+    <div class="panel-glow"></div>
+    <div class="welcome-content" id="welcomeContent">
+      <div class="welcome-title" id="welcomeTitle">WELCOME<br/>BACK!</div>
+      <p class="welcome-sub" id="welcomeSub">
+        We're happy to have you with us again.<br/>
+        If you need anything, we are here to help.
+      </p>
+      <button class="panel-btn" id="panelBtn" onclick="switchToRegister()">Register Now</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+//  PARTICLES
+(function(){
+  const container = document.getElementById('particles');
+  const sizes = [6,8,10,14,18,22];
+  for(let i=0;i<18;i++){
+    const p = document.createElement('div');
+    p.className = 'particle';
+    const sz = sizes[Math.floor(Math.random()*sizes.length)];
+    p.style.cssText = `
+      width:${sz}px;height:${sz}px;
+      left:${Math.random()*100}%;
+      animation-duration:${6+Math.random()*10}s;
+      animation-delay:${Math.random()*8}s;
+      opacity:${.05+Math.random()*.2};
+    `;
+    container.appendChild(p);
+  }
+})();
+
+//  PANEL SWITCH ANIMATION
+const cont          = document.getElementById('container');
+const welcomeTitle  = document.getElementById('welcomeTitle');
+const welcomeSub    = document.getElementById('welcomeSub');
+const panelBtn      = document.getElementById('panelBtn');
+
+function switchToRegister(){
+  cont.classList.add('active');
+  welcomeTitle.innerHTML = 'WELCOME!';
+  welcomeSub.innerHTML   = "We're delighted to have you here.<br/>If you need any assistance,<br/>feel free to reach out.";
+  panelBtn.textContent   = 'Sign In';
+  panelBtn.onclick       = switchToLogin;
+  clearMsgs();
+}
+
+function switchToLogin(){
+  cont.classList.remove('active');
+  welcomeTitle.innerHTML = 'WELCOME<br/>BACK!';
+  welcomeSub.innerHTML   = "We're happy to have you with us again.<br/>If you need anything, we are here to help.";
+  panelBtn.textContent   = 'Register Now';
+  panelBtn.onclick       = switchToRegister;
+  clearMsgs();
+}
+
+function clearMsgs(){
+  ['loginError','loginSuccess','registerError','registerSuccess'].forEach(id=>{
+    const el = document.getElementById(id);
+    el.className = el.className.replace(' show','');
+  });
+}
+
+//  PASSWORD TOGGLE
+function togglePass(inputId, iconEl){
+  const inp = document.getElementById(inputId);
+  if(inp.type === 'password'){
+    inp.type = 'text';
+    iconEl.textContent = '🔓';
+  } else {
+    inp.type = 'password';
+    iconEl.textContent = '🔒';
+  }
+}
+
+//  PASSWORD STRENGTH METER
+function checkStrength(val){
+  const wrap  = document.getElementById('strengthWrap');
+  const fill  = document.getElementById('strengthFill');
+  const label = document.getElementById('strengthLabel');
+  if(!val){ wrap.classList.remove('show'); return; }
+  wrap.classList.add('show');
+
+  let score = 0;
+  if(val.length >= 8)               score++;
+  if(/[A-Z]/.test(val))             score++;
+  if(/[0-9]/.test(val))             score++;
+  if(/[^A-Za-z0-9]/.test(val))      score++;
+
+  const levels = [
+    {pct:'25%', color:'#ef4444', text:'Weak'},
+    {pct:'50%', color:'#f97316', text:'Fair'},
+    {pct:'75%', color:'#eab308', text:'Good'},
+    {pct:'100%',color:'#22c55e', text:'Strong'},
+  ];
+  const lvl = levels[score-1] || levels[0];
+  fill.style.width      = lvl.pct;
+  fill.style.background = lvl.color;
+  label.textContent     = lvl.text;
+  label.style.color     = lvl.color;
+}
+
+//  SHOW MESSAGE HELPERS
+function showMsg(id, text, type){
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className   = `msg ${type} show`;
+}
+function hideMsg(id){
+  const el = document.getElementById(id);
+  el.className = el.className.replace(' show','');
+}
+
+function setLoading(btnId, loading){
+  const btn = document.getElementById(btnId);
+  btn.classList.toggle('loading', loading);
+  btn.textContent = loading
+    ? (btnId==='loginBtn' ? 'Signing in' : 'Creating account')
+    : (btnId==='loginBtn' ? 'Login' : 'Register');
+}
+
+//  FORGOT PASSWORD (placeholder)
+// forgot password flow
+function showForgot(){
+  // clear any previous state
+  document.getElementById('forgotEmail').value   = '';
+  document.getElementById('forgotStep1').style.display = 'block';
+  document.getElementById('forgotStep2').style.display = 'none';
+  const errEl = document.getElementById('forgotError');
+  const sucEl = document.getElementById('forgotSuccess');
+  errEl.className = 'msg error';
+  sucEl.className = 'msg success';
+  // show the modal
+  document.getElementById('forgotOverlay').classList.add('show');
+  setTimeout(() => document.getElementById('forgotEmail').focus(), 300);
+}
+
+function closeForgot(){
+  document.getElementById('forgotOverlay').classList.remove('show');
+}
+
+function closeForgotGoLogin(){
+  closeForgot();
+  // make sure we are on the login panel
+  switchToLogin();
+}
+
+// close modal when clicking the dark overlay behind it
+document.getElementById('forgotOverlay').addEventListener('click', function(e){
+  if(e.target === this) closeForgot();
+});
+
+async function doForgotPassword(){
+  const email = document.getElementById('forgotEmail').value.trim();
+  const errEl = document.getElementById('forgotError');
+  const sucEl = document.getElementById('forgotSuccess');
+  const btn   = document.getElementById('forgotBtn');
+
+  errEl.className = 'msg error';
+  sucEl.className = 'msg success';
+
+  if(!email){
+    errEl.textContent = 'Please enter your email address.';
+    errEl.className   = 'msg error show';
+    return;
+  }
+
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    errEl.textContent = 'That does not look like a valid email address.';
+    errEl.className   = 'msg error show';
+    return;
+  }
+
+  btn.disabled    = true;
+  btn.textContent = 'Checking...';
+
+  try {
+    const resp = await fetch('/api/auth/forgot-password', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({ email })
+    });
+    const data = await resp.json();
+
+    if(resp.ok && data.success){
+      // show the temp password in step 2
+      document.getElementById('tempPassDisplay').textContent = data.temp_password;
+      document.getElementById('forgotStep1').style.display  = 'none';
+      document.getElementById('forgotStep2').style.display  = 'block';
+    } else {
+      errEl.textContent = data.error || 'Something went wrong. Please try again.';
+      errEl.className   = 'msg error show';
+    }
+  } catch(e) {
+    errEl.textContent = 'Cannot reach the server. Make sure Flask is running.';
+    errEl.className   = 'msg error show';
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Send Temporary Password';
+  }
+}
+
+function copyTempPass(){
+  const pass = document.getElementById('tempPassDisplay').textContent;
+  navigator.clipboard.writeText(pass).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = '✅ Copied!';
+    setTimeout(() => btn.textContent = '📋 Copy', 2000);
+  }).catch(() => {
+    // fallback for older browsers
+    const range = document.createRange();
+    range.selectNode(document.getElementById('tempPassDisplay'));
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.execCommand('copy');
+    window.getSelection().removeAllRanges();
+  });
+}
+
+
+//  REGISTER
+async function doRegister(){
+  const username = document.getElementById('regUsername').value.trim();
+  const email    = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  const confirm  = document.getElementById('regConfirm').value;
+
+  hideMsg('registerError'); hideMsg('registerSuccess');
+
+  // Client-side validation
+  if(!username || !email || !password || !confirm){
+    showMsg('registerError','All fields are required.','error'); return;
+  }
+  if(username.length < 3){
+    showMsg('registerError','Username must be at least 3 characters.','error'); return;
+  }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+    showMsg('registerError','Please enter a valid email address.','error'); return;
+  }
+  if(password.length < 6){
+    showMsg('registerError','Password must be at least 6 characters.','error'); return;
+  }
+  if(password !== confirm){
+    showMsg('registerError','Passwords do not match.','error'); return;
+  }
+
+  setLoading('registerBtn', true);
+  try{
+    const resp = await fetch('/api/auth/register',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username, email, password})
+    });
+    const data = await resp.json();
+    if(resp.ok && data.success){
+      showMsg('registerSuccess','✅ Account created! Redirecting to login…','success');
+      document.getElementById('regUsername').value = '';
+      document.getElementById('regEmail').value    = '';
+      document.getElementById('regPassword').value = '';
+      document.getElementById('regConfirm').value  = '';
+      document.getElementById('strengthWrap').classList.remove('show');
+      setTimeout(()=>{ switchToLogin(); hideMsg('registerSuccess'); }, 1800);
+    } else {
+      showMsg('registerError', data.error || 'Registration failed.', 'error');
+    }
+  } catch(e){
+    showMsg('registerError','Cannot connect to server. Make sure Flask is running.','error');
+  } finally {
+    setLoading('registerBtn', false);
+  }
+}
+
+//  LOGIN
+async function doLogin(){
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const remember = document.getElementById('rememberMe').checked;
+
+  hideMsg('loginError'); hideMsg('loginSuccess');
+
+  if(!username || !password){
+    showMsg('loginError','Please enter your username and password.','error'); return;
+  }
+
+  setLoading('loginBtn', true);
+  try{
+    const resp = await fetch('/api/auth/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username, password, remember})
+    });
+    const data = await resp.json();
+    if(resp.ok && data.success){
+      showMsg('loginSuccess',`✅ Welcome back, ${data.username}! Redirecting…`,'success');
+      setTimeout(()=>{ window.location.href = '/'; }, 1200);
+    } else {
+      showMsg('loginError', data.error || 'Invalid credentials.', 'error');
+    }
+  } catch(e){
+    showMsg('loginError','Cannot connect to server. Make sure Flask is running.','error');
+  } finally {
+    setLoading('loginBtn', false);
+  }
+}
+
+// Enter key support
+document.addEventListener('keydown', e=>{
+  if(e.key !== 'Enter') return;
+  if(cont.classList.contains('active')) doRegister();
+  else doLogin();
+});
+
+// Auto-fill from remember-me cookie if present
+window.addEventListener('load', ()=>{
+  const saved = localStorage.getItem('resumeml_remember');
+  if(saved){
+    const {username} = JSON.parse(saved);
+    document.getElementById('loginUsername').value = username;
+    document.getElementById('rememberMe').checked  = true;
+  }
+});
+</script>
+</body>
+</html>

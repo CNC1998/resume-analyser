@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>ResumeML — ML-Powered Resume Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/static/css/style.css"/>
+</head>
+<body class="light" id="app">
+
+<!-- nav -->
+<nav id="navbar">
+  <div class="nav-inner">
+    <div class="nav-brand" onclick="showPage('home')">
+      <div class="brand-icon">ML</div>
+      <span class="brand-name">ResumeML</span>
+    </div>
+
+    <!-- hamburger shows only on mobile -->
+    <button class="hamburger" id="hamburger" onclick="toggleMobileMenu()" aria-label="Open menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+
+    <div class="nav-links" id="navLinks">
+      <button class="nav-btn active" data-page="home"    onclick="showPage('home');closeMobileMenu()">Home</button>
+      <button class="nav-btn"        data-page="upload"  onclick="showPage('upload');closeMobileMenu()">Analyze</button>
+      <button class="nav-btn hidden" data-page="results" id="nav-results" onclick="showPage('results');closeMobileMenu()">Results</button>
+      <button class="nav-btn hidden" data-page="history" id="nav-history" onclick="showPage('history');closeMobileMenu()">History</button>
+      <div class="nav-sep"></div>
+      <button class="coach-btn" id="coachToggle" onclick="toggleChat();closeMobileMenu()">
+        <span class="coach-icon">⬡</span> ML Coach
+      </button>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">🌙</button>
+      <a href="/logout" class="logout-btn">⎋ Logout</a>
+    </div>
+  </div>
+</nav>
+
+<!-- pages -->
+<main id="main">
+
+<!-- home -->
+<section id="page-home" class="page active fadeup">
+  <div class="home-wrap">
+    <div class="home-hero">
+      <div class="home-hero-icon">⬡</div>
+      <h1 class="home-title">ResumeML</h1>
+      <p class="home-subtitle">AI-Powered Resume Analyzer &amp; Smart Job Matching System</p>
+      <p class="home-desc">Upload your resume, choose your target domain, and get an instant ML-based analysis — skill matching, job recommendations, and personalized improvement tips.</p>
+      <button class="btn-primary" onclick="showPage('upload')">Analyze My Resume →</button>
+    </div>
+    <div class="home-features">
+      <div class="home-feat"><span class="home-feat-icon">🎯</span><div><strong>Smart Skill Matching</strong><p>Detects matched, related, and missing skills using domain-aware analysis.</p></div></div>
+      <div class="home-feat"><span class="home-feat-icon">🏢</span><div><strong>Company Recommendations</strong><p>Shows which top companies you qualify for based on your score.</p></div></div>
+      <div class="home-feat"><span class="home-feat-icon">💡</span><div><strong>Improvement Suggestions</strong><p>Personalized tips to close skill gaps and boost your resume score.</p></div></div>
+      <div class="home-feat"><span class="home-feat-icon">🔍</span><div><strong>12 Job Domains</strong><p>Data Science, Web Dev, AI/ML, DevOps, Cybersecurity, and more.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- upload -->
+<section id="page-upload" class="page fadeup">
+  <div class="upload-wrap">
+    <div class="upload-header">
+      <h2>Analyze Your Resume</h2>
+      <p>Choose your target domain, upload your resume, and get your personalized ML analysis instantly.</p>
+    </div>
+
+    <!-- Step 1: Domain -->
+    <div class="step-header"><div class="step-num">01</div><span>Choose Target Domain</span></div>
+    <div class="domain-grid" id="domainGrid"></div>
+
+    <!-- Step 2: Upload -->
+    <div class="step-header"><div class="step-num">02</div><span>Upload Resume — PDF, DOCX or TXT only</span></div>
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()"
+         ondragover="onDragOver(event)" ondragleave="onDragLeave()" ondrop="onDrop(event)">
+      <input type="file" id="fileInput" accept=".pdf,.docx,.txt" style="display:none" onchange="onFileSelect(event)"/>
+      <div id="dropContent">
+        <div class="drop-icon">⬆</div>
+        <div class="drop-title">Drop your resume here</div>
+        <div class="drop-sub">PDF, DOCX, or TXT only · Max 5MB · Images and other formats not accepted</div>
+      </div>
+    </div>
+
+    <!-- Step 3: Job Description (Optional) -->
+    <div class="step-header">
+        <div class="step-num">03</div>
+        <span>Paste Job Description <span class="optional-badge">Optional</span></span>
+    </div>
+    <div class="jd-wrap">
+        <div class="jd-top">
+            <span class="jd-hint">
+                📋 Copy and paste the job description you are applying for.
+                We will extract keywords and compare them directly against your resume — just like Jobscan.
+            </span>
+            <button class="jd-clear-btn" id="jdClearBtn" onclick="clearJobDescription()" style="display:none">✕ Clear</button>
+        </div>
+        <textarea
+            id="jobDescription"
+            class="jd-textarea"
+            placeholder="Paste the full job description here…&#10;&#10;Example:&#10;We are looking for a Data Scientist with experience in Python, SQL, Machine Learning,&#10;TensorFlow, and data visualization. The ideal candidate should have 2+ years of experience&#10;working with large datasets and building ML models..."
+            oninput="onJobDescriptionInput()"
+            rows="7"
+        ></textarea>
+        <div class="jd-footer">
+            <span class="jd-char-count" id="jdCharCount">0 characters</span>
+            <span class="jd-status" id="jdStatus"></span>
+        </div>
+    </div>
+
+    <div id="uploadError" class="error-box hidden"></div>
+    <button class="btn-primary full" id="analyzeBtn" onclick="analyzeResume()" disabled>
+      <span id="analyzeBtnText">⬡ Analyze Resume</span>
+    </button>
+  </div>
+</section>
+
+<!-- results -->
+<section id="page-results" class="page fadeup">
+  <div class="results-wrap" id="resultsContent"></div>
+</section>
+
+<!-- history -->
+<section id="page-history" class="page fadeup">
+  <div class="history-wrap">
+    <h2>History</h2>
+    <p class="history-sub">Your recent ML analyses</p>
+    <div id="historyList"></div>
+  </div>
+</section>
+
+</main>
+
+<!-- ml coach chatbot -->
+<div id="chatFab" onclick="toggleChat()">
+  <span style="color:#fff;font-size:14px;font-weight:900">ML</span>
+  <span style="color:rgba(255,255,255,.5);font-size:9px">Coach</span>
+</div>
+
+<div id="chatPanel" class="hidden">
+  <div class="chat-header">
+    <div class="chat-header-left">
+      <div class="chat-avatar">ML</div>
+      <div>
+        <div class="chat-title">ML Career Coach</div>
+        <div class="chat-status"><span class="status-dot"></span>Rule-based NLP · No API · Always on</div>
+      </div>
+    </div>
+    <div class="chat-header-btns">
+      <button onclick="minimizeChat()" id="minBtn">↓</button>
+      <button onclick="closeChat()">✕</button>
+    </div>
+  </div>
+  <div class="chat-body" id="chatBody">
+    <div class="chat-msg bot">
+      <div class="msg-avatar">ML</div>
+      <div class="msg-bubble">Hi! I'm your <strong>ML Career Coach</strong>.<br/>Ask me about your resume score, missing skills, companies, or how the model works.</div>
+    </div>
+  </div>
+  <div class="chat-chips" id="chatChips"></div>
+  <div class="chat-input-row">
+    <input id="chatInput" placeholder="Ask the ML coach…" onkeydown="if(event.key==='Enter')sendChat()"/>
+    <button onclick="sendChat()" id="chatSendBtn">→</button>
+  </div>
+</div>
+
+<script src="/static/js/main.js"></script>
+<script>
+function toggleMobileMenu() {
+    var links = document.getElementById('navLinks');
+    var ham   = document.getElementById('hamburger');
+    links.classList.toggle('open');
+    ham.classList.toggle('open');
+}
+
+function closeMobileMenu() {
+    document.getElementById('navLinks').classList.remove('open');
+    document.getElementById('hamburger').classList.remove('open');
+}
+
+// close the menu when user taps anywhere outside the navbar
+document.addEventListener('click', function(e) {
+    var nav = document.getElementById('navbar');
+    if (nav && !nav.contains(e.target)) {
+        closeMobileMenu();
+    }
+});
+</script>
+</body>
+</html>
