@@ -10,10 +10,11 @@ import os
 import re
 import json
 import math
-import csv
+import sqlite3
 import hashlib
 import secrets
 import uuid
+import random
 import traceback
 from datetime import datetime
 
@@ -23,9 +24,9 @@ from flask import Flask, request, jsonify, send_from_directory, session, redirec
 from werkzeug.utils import secure_filename
 
 
-# ---------------------------------------------------------------------------
+
 # paths
-# ---------------------------------------------------------------------------
+
 
 # app.py is at the project root — same level as static/, templates/, dataset/, model/
 project_root  = os.path.dirname(os.path.abspath(__file__))
@@ -33,14 +34,22 @@ model_file    = os.path.join(project_root, "model", "resume_rf_model.pkl")
 metadata_file = os.path.join(project_root, "model", "model_metadata.json")
 frontend_dir  = project_root
 uploads_dir   = os.path.join(project_root, "uploads")
-users_csv     = os.path.join(project_root, "dataset", "users.csv")
+
+# SQLite database file for user accounts.
+# On Render (Linux) we use /tmp which is always writable.
+# On Windows (local development) we use the dataset/ folder.
+if os.environ.get("RENDER"):
+    users_db = "/tmp/resumeml_users.db"
+else:
+    # Works on Windows, Mac, and Linux
+    users_db = os.path.join(project_root, "dataset", "users.db")
 
 os.makedirs(uploads_dir, exist_ok=True)
 
 
-# ---------------------------------------------------------------------------
+
 # flask setup
-# ---------------------------------------------------------------------------
+
 
 app = Flask(
     __name__,
@@ -52,13 +61,12 @@ app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
 # Use a fixed secret key from environment variable on Render
 # Falls back to a random key locally (fine for development)
-import os as _os_sk
-app.secret_key = _os_sk.environ.get("SECRET_KEY", secrets.token_hex(32))
+app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 
 
-# ---------------------------------------------------------------------------
+
 # load the trained model
-# ---------------------------------------------------------------------------
+
 
 try:
     rf_model  = joblib.load(model_file)
@@ -70,7 +78,7 @@ try:
     print("Model loaded  MAE=" + str(model_info["cv_mae_mean"]) + "  R2=" + str(model_info["cv_r2_mean"]))
 except Exception as err:
     model_is_ready = False
-    model_info     = {}
+    model_info = {}
     print("Could not load model: " + str(err))
     print("Run dataset/train_model.py first.")
     domain_skills = {
@@ -142,10 +150,10 @@ except Exception as err:
     ]
 
 
-# ---------------------------------------------------------------------------
+
 # skill aliases
 # People write skills in many different ways. This maps them all to one name.
-# ---------------------------------------------------------------------------
+
 
 skill_aliases = {
     "node.js":          ["nodejs", "node js", "node"],
@@ -225,72 +233,260 @@ for standard, variations in skill_aliases.items():
         alias_lookup[v.lower()] = standard
 
 
-# ---------------------------------------------------------------------------
+
 # skill relationships
 # When someone mentions "machine learning" we can infer they probably also
 # know pandas, numpy etc. even if not explicitly listed.
 # confidence >= 0.5 means we count it as a "related" skill
-# ---------------------------------------------------------------------------
+
 
 skill_relationships = {
     # data science
-    "machine learning":    [("pandas",0.9),("numpy",0.9),("scikit-learn",0.9),("matplotlib",0.8),("python",0.95),("statistics",0.8),("data visualization",0.7),("sql",0.7)],
-    "data science":        [("pandas",0.95),("numpy",0.95),("matplotlib",0.9),("sql",0.85),("statistics",0.9),("python",0.95),("data visualization",0.85),("scikit-learn",0.8),("r",0.6),("excel",0.7)],
+    "machine learning":    [("pandas",0.9),
+        ("numpy",0.9),
+        ("scikit-learn",0.9),
+        ("matplotlib",0.8),
+        ("python",0.95),
+        ("statistics",0.8),
+        ("data visualization",0.7),
+        ("sql",0.7)],
+    "data science":        [("pandas",0.95),
+        ("numpy",0.95),
+        ("matplotlib",0.9),
+        ("sql",0.85),
+        ("statistics",0.9),
+        ("python",0.95),
+        ("data visualization",0.85),
+        ("scikit-learn",0.8),
+        ("r",0.6),
+        ("excel",0.7)],
     "deep learning":       [("tensorflow",0.9),("pytorch",0.85),("keras",0.85),("numpy",0.9),("python",0.95),("cuda",0.7)],
-    "data analysis":       [("excel",0.9),("pandas",0.9),("power bi",0.8),("tableau",0.75),("matplotlib",0.8),("sql",0.9),("statistics",0.85),("numpy",0.8),("python",0.75)],
-    "data engineering":    [("apache spark",0.9),("kafka",0.85),("airflow",0.85),("etl",0.95),("data pipelines",0.95),("hadoop",0.7),("sql",0.9),("python",0.9),("scala",0.7),("databricks",0.7),("data lake",0.8),("data warehousing",0.8)],
+    "data analysis":       [("excel",0.9),
+        ("pandas",0.9),
+        ("power bi",0.8),
+        ("tableau",0.75),
+        ("matplotlib",0.8),
+        ("sql",0.9),
+        ("statistics",0.85),
+        ("numpy",0.8),
+        ("python",0.75)],
+    "data engineering":    [("apache spark",0.9),
+        ("kafka",0.85),
+        ("airflow",0.85),
+        ("etl",0.95),
+        ("data pipelines",0.95),
+        ("hadoop",0.7),
+        ("sql",0.9),
+        ("python",0.9),
+        ("scala",0.7),
+        ("databricks",0.7),
+        ("data lake",0.8),
+        ("data warehousing",0.8)],
     "data visualization":  [("matplotlib",0.9),("tableau",0.85),("power bi",0.85),("excel",0.8),("python",0.7)],
     "statistical analysis":[("statistics",0.95),("r",0.85),("pandas",0.8),("numpy",0.8),("excel",0.75),("python",0.7)],
     "business intelligence":[("power bi",0.9),("tableau",0.9),("excel",0.9),("sql",0.85),("data visualization",0.9)],
     # ai and ml
-    "artificial intelligence":[("python",0.95),("machine learning",0.9),("tensorflow",0.8),("deep learning",0.8),("scikit-learn",0.75),("numpy",0.85),("pandas",0.8)],
-    "natural language processing":[("nltk",0.9),("spacy",0.9),("transformers",0.85),("bert",0.8),("python",0.95),("word2vec",0.75),("text classification",0.85),("tokenization",0.85),("hugging face",0.8),("ner",0.75),("sentiment analysis",0.75)],
-    "nlp":                 [("nltk",0.9),("spacy",0.9),("transformers",0.85),("bert",0.8),("python",0.95),("hugging face",0.8),("text classification",0.8),("tokenization",0.8),("word2vec",0.7),("ner",0.7),("sentiment analysis",0.7)],
+    "artificial intelligence":[("python",0.95),
+        ("machine learning",0.9),
+        ("tensorflow",0.8),
+        ("deep learning",0.8),
+        ("scikit-learn",0.75),
+        ("numpy",0.85),
+        ("pandas",0.8)],
+    "natural language processing":[("nltk",0.9),
+        ("spacy",0.9),
+        ("transformers",0.85),
+        ("bert",0.8),
+        ("python",0.95),
+        ("word2vec",0.75),
+        ("text classification",0.85),
+        ("tokenization",0.85),
+        ("hugging face",0.8),
+        ("ner",0.75),
+        ("sentiment analysis",0.75)],
+    "nlp":                 [("nltk",0.9),
+        ("spacy",0.9),
+        ("transformers",0.85),
+        ("bert",0.8),
+        ("python",0.95),
+        ("hugging face",0.8),
+        ("text classification",0.8),
+        ("tokenization",0.8),
+        ("word2vec",0.7),
+        ("ner",0.7),
+        ("sentiment analysis",0.7)],
     "computer vision":     [("opencv",0.9),("tensorflow",0.85),("pytorch",0.85),("numpy",0.9),("python",0.95),("keras",0.75)],
     "reinforcement learning":[("tensorflow",0.8),("pytorch",0.8),("numpy",0.9),("python",0.95)],
     "mlops":               [("mlflow",0.9),("docker",0.85),("kubernetes",0.8),("python",0.9),("ci/cd",0.75),("git",0.85),("aws",0.7)],
-    "generative ai":       [("python",0.95),("langchain",0.85),("transformers",0.85),("hugging face",0.85),("bert",0.7),("fine-tuning",0.8),("rag",0.75)],
+    "generative ai":       [("python",0.95),
+        ("langchain",0.85),
+        ("transformers",0.85),
+        ("hugging face",0.85),
+        ("bert",0.7),
+        ("fine-tuning",0.8),
+        ("rag",0.75)],
     "llm":                 [("python",0.95),("langchain",0.85),("hugging face",0.85),("transformers",0.85),("fine-tuning",0.8),("rag",0.8)],
     # web development
-    "web development":     [("html",0.95),("css",0.95),("javascript",0.95),("rest api",0.85),("git",0.9),("sql",0.75),("react",0.7),("node.js",0.7)],
-    "frontend development":[("html",0.98),("css",0.98),("javascript",0.98),("react",0.85),("typescript",0.75),("tailwind css",0.7),("git",0.9),("rest api",0.8),("next.js",0.65),("vue.js",0.6)],
-    "backend development": [("rest api",0.95),("sql",0.9),("python",0.85),("node.js",0.8),("docker",0.75),("git",0.9),("mongodb",0.7),("express",0.7)],
-    "full stack development":[("html",0.95),("css",0.95),("javascript",0.95),("react",0.85),("node.js",0.85),("express",0.8),("mongodb",0.8),("sql",0.8),("rest api",0.9),("git",0.9),("docker",0.7),("typescript",0.7)],
+    "web development":     [("html",0.95),
+        ("css",0.95),
+        ("javascript",0.95),
+        ("rest api",0.85),
+        ("git",0.9),
+        ("sql",0.75),
+        ("react",0.7),
+        ("node.js",0.7)],
+    "frontend development":[("html",0.98),
+        ("css",0.98),
+        ("javascript",0.98),
+        ("react",0.85),
+        ("typescript",0.75),
+        ("tailwind css",0.7),
+        ("git",0.9),
+        ("rest api",0.8),
+        ("next.js",0.65),
+        ("vue.js",0.6)],
+    "backend development": [("rest api",0.95),
+        ("sql",0.9),
+        ("python",0.85),
+        ("node.js",0.8),
+        ("docker",0.75),
+        ("git",0.9),
+        ("mongodb",0.7),
+        ("express",0.7)],
+    "full stack development":[("html",0.95),
+        ("css",0.95),
+        ("javascript",0.95),
+        ("react",0.85),
+        ("node.js",0.85),
+        ("express",0.8),
+        ("mongodb",0.8),
+        ("sql",0.8),
+        ("rest api",0.9),
+        ("git",0.9),
+        ("docker",0.7),
+        ("typescript",0.7)],
     "javascript":          [("html",0.95),("css",0.9),("react",0.75),("node.js",0.7),("typescript",0.65),("git",0.85),("rest api",0.7)],
-    "react":               [("javascript",0.98),("html",0.9),("css",0.9),("typescript",0.75),("rest api",0.85),("git",0.9),("node.js",0.7),("next.js",0.6)],
+    "react":               [("javascript",0.98),
+        ("html",0.9),
+        ("css",0.9),
+        ("typescript",0.75),
+        ("rest api",0.85),
+        ("git",0.9),
+        ("node.js",0.7),
+        ("next.js",0.6)],
     "node.js":             [("javascript",0.98),("express",0.9),("mongodb",0.75),("rest api",0.9),("git",0.85)],
     "next.js":             [("react",0.95),("javascript",0.98),("typescript",0.8),("css",0.85),("rest api",0.8),("git",0.85)],
     "vue.js":              [("javascript",0.98),("html",0.9),("css",0.9),("typescript",0.7),("rest api",0.8),("git",0.85)],
     "api development":     [("rest api",0.95),("graphql",0.7),("node.js",0.75),("python",0.75),("postman",0.8)],
     # mobile
-    "mobile development":  [("rest api",0.9),("git",0.9),("firebase",0.75),("swift",0.6),("kotlin",0.6),("react native",0.65),("flutter",0.65)],
+    "mobile development":  [("rest api",0.9),
+        ("git",0.9),
+        ("firebase",0.75),
+        ("swift",0.6),
+        ("kotlin",0.6),
+        ("react native",0.65),
+        ("flutter",0.65)],
     "ios development":     [("swift",0.98),("xcode",0.95),("rest api",0.85),("git",0.9),("firebase",0.7)],
     "android development": [("kotlin",0.98),("android studio",0.95),("java",0.8),("rest api",0.85),("git",0.9),("firebase",0.7)],
     "flutter":             [("dart",0.98),("firebase",0.85),("rest api",0.85),("git",0.9),("android studio",0.7),("xcode",0.65)],
     "react native":        [("javascript",0.98),("typescript",0.75),("firebase",0.8),("rest api",0.9),("git",0.9)],
     # cloud
-    "cloud computing":     [("aws",0.8),("azure",0.7),("gcp",0.7),("docker",0.85),("kubernetes",0.75),("terraform",0.7),("linux",0.8),("git",0.85)],
-    "aws":                 [("s3",0.9),("lambda",0.85),("iam",0.9),("cloudformation",0.75),("vpc",0.8),("terraform",0.7),("linux",0.75),("docker",0.7)],
+    "cloud computing":     [("aws",0.8),
+        ("azure",0.7),
+        ("gcp",0.7),
+        ("docker",0.85),
+        ("kubernetes",0.75),
+        ("terraform",0.7),
+        ("linux",0.8),
+        ("git",0.85)],
+    "aws":                 [("s3",0.9),
+        ("lambda",0.85),
+        ("iam",0.9),
+        ("cloudformation",0.75),
+        ("vpc",0.8),
+        ("terraform",0.7),
+        ("linux",0.75),
+        ("docker",0.7)],
     "azure":               [("kubernetes",0.75),("terraform",0.7),("linux",0.75),("docker",0.75)],
     "gcp":                 [("terraform",0.7),("kubernetes",0.8),("linux",0.75),("docker",0.75)],
     "serverless":          [("lambda",0.9),("aws",0.8),("s3",0.7),("terraform",0.65)],
     "infrastructure as code":[("terraform",0.95),("ansible",0.85),("cloudformation",0.75),("docker",0.75),("linux",0.8)],
     # devops
-    "devops":              [("docker",0.95),("kubernetes",0.9),("ci/cd",0.95),("linux",0.9),("git",0.95),("aws",0.75),("terraform",0.8),("ansible",0.75),("shell scripting",0.85),("jenkins",0.75),("prometheus",0.7),("grafana",0.7),("nginx",0.65)],
+    "devops":              [("docker",0.95),
+        ("kubernetes",0.9),
+        ("ci/cd",0.95),
+        ("linux",0.9),
+        ("git",0.95),
+        ("aws",0.75),
+        ("terraform",0.8),
+        ("ansible",0.75),
+        ("shell scripting",0.85),
+        ("jenkins",0.75),
+        ("prometheus",0.7),
+        ("grafana",0.7),
+        ("nginx",0.65)],
     "docker":              [("kubernetes",0.75),("linux",0.85),("ci/cd",0.75),("git",0.85),("shell scripting",0.7)],
     "kubernetes":          [("docker",0.9),("linux",0.85),("terraform",0.7),("ci/cd",0.75),("git",0.85)],
     "ci/cd":               [("git",0.95),("docker",0.85),("jenkins",0.75),("kubernetes",0.7),("shell scripting",0.75),("linux",0.8)],
     "containerization":    [("docker",0.98),("kubernetes",0.9),("linux",0.85),("ci/cd",0.8),("shell scripting",0.7)],
-    "site reliability engineering":[("linux",0.9),("kubernetes",0.9),("prometheus",0.9),("grafana",0.85),("docker",0.85),("ci/cd",0.8),("shell scripting",0.85),("python",0.75),("terraform",0.75)],
-    "sre":                 [("linux",0.9),("kubernetes",0.9),("prometheus",0.9),("grafana",0.85),("docker",0.85),("ci/cd",0.8),("shell scripting",0.85)],
+    "site reliability engineering":[("linux",0.9),
+        ("kubernetes",0.9),
+        ("prometheus",0.9),
+        ("grafana",0.85),
+        ("docker",0.85),
+        ("ci/cd",0.8),
+        ("shell scripting",0.85),
+        ("python",0.75),
+        ("terraform",0.75)],
+    "sre":                 [("linux",0.9),
+        ("kubernetes",0.9),
+        ("prometheus",0.9),
+        ("grafana",0.85),
+        ("docker",0.85),
+        ("ci/cd",0.8),
+        ("shell scripting",0.85)],
     # cybersecurity
-    "cybersecurity":       [("network security",0.9),("penetration testing",0.85),("firewalls",0.85),("cryptography",0.8),("owasp",0.85),("kali linux",0.75),("wireshark",0.75),("soc",0.75),("siem",0.75),("risk assessment",0.8),("incident response",0.8),("compliance",0.75)],
-    "penetration testing": [("kali linux",0.95),("metasploit",0.9),("wireshark",0.85),("owasp",0.9),("python",0.8),("network security",0.9),("ethical hacking",0.9)],
-    "ethical hacking":     [("kali linux",0.95),("metasploit",0.9),("wireshark",0.85),("python",0.8),("owasp",0.85),("network security",0.9),("penetration testing",0.9)],
+    "cybersecurity":       [("network security",0.9),
+        ("penetration testing",0.85),
+        ("firewalls",0.85),
+        ("cryptography",0.8),
+        ("owasp",0.85),
+        ("kali linux",0.75),
+        ("wireshark",0.75),
+        ("soc",0.75),
+        ("siem",0.75),
+        ("risk assessment",0.8),
+        ("incident response",0.8),
+        ("compliance",0.75)],
+    "penetration testing": [("kali linux",0.95),
+        ("metasploit",0.9),
+        ("wireshark",0.85),
+        ("owasp",0.9),
+        ("python",0.8),
+        ("network security",0.9),
+        ("ethical hacking",0.9)],
+    "ethical hacking":     [("kali linux",0.95),
+        ("metasploit",0.9),
+        ("wireshark",0.85),
+        ("python",0.8),
+        ("owasp",0.85),
+        ("network security",0.9),
+        ("penetration testing",0.9)],
     "network security":    [("firewalls",0.9),("wireshark",0.85),("siem",0.8),("owasp",0.75)],
     "security operations": [("soc",0.95),("siem",0.9),("incident response",0.9),("network security",0.85),("firewalls",0.8)],
     # software engineering
-    "software engineering":[("design patterns",0.9),("oop",0.95),("data structures",0.9),("algorithms",0.9),("git",0.95),("agile",0.85),("scrum",0.8),("unit testing",0.85),("rest api",0.85),("microservices",0.75),("solid principles",0.8),("system design",0.75)],
+    "software engineering":[("design patterns",0.9),
+        ("oop",0.95),
+        ("data structures",0.9),
+        ("algorithms",0.9),
+        ("git",0.95),
+        ("agile",0.85),
+        ("scrum",0.8),
+        ("unit testing",0.85),
+        ("rest api",0.85),
+        ("microservices",0.75),
+        ("solid principles",0.8),
+        ("system design",0.75)],
     "software development":[("git",0.95),("oop",0.9),("unit testing",0.85),("agile",0.8),("rest api",0.8),("design patterns",0.75)],
     "object oriented programming":[("design patterns",0.9),("oop",0.98),("solid principles",0.8)],
     "oop":                 [("design patterns",0.9),("solid principles",0.8),("unit testing",0.7)],
@@ -305,21 +501,95 @@ skill_relationships = {
     "nosql":               [("mongodb",0.9),("redis",0.75),("cassandra",0.7),("firebase",0.65)],
     "data warehousing":    [("snowflake",0.9),("databricks",0.85),("etl",0.9),("dbt",0.8),("sql",0.9),("data pipelines",0.85)],
     # ui ux
-    "ui/ux design":        [("figma",0.95),("wireframing",0.95),("prototyping",0.95),("user research",0.9),("usability testing",0.85),("design systems",0.8),("html",0.75),("css",0.75),("accessibility",0.8),("information architecture",0.8),("typography",0.75),("color theory",0.75)],
-    "ui design":           [("figma",0.95),("adobe xd",0.85),("wireframing",0.9),("design systems",0.85),("typography",0.8),("color theory",0.8),("css",0.75),("html",0.7)],
-    "ux design":           [("user research",0.95),("usability testing",0.9),("wireframing",0.9),("prototyping",0.85),("information architecture",0.85),("figma",0.9),("accessibility",0.8)],
-    "product design":      [("figma",0.95),("wireframing",0.9),("prototyping",0.9),("user research",0.85),("design systems",0.85),("usability testing",0.8),("accessibility",0.75)],
+    "ui/ux design":        [("figma",0.95),
+        ("wireframing",0.95),
+        ("prototyping",0.95),
+        ("user research",0.9),
+        ("usability testing",0.85),
+        ("design systems",0.8),
+        ("html",0.75),
+        ("css",0.75),
+        ("accessibility",0.8),
+        ("information architecture",0.8),
+        ("typography",0.75),
+        ("color theory",0.75)],
+    "ui design":           [("figma",0.95),
+        ("adobe xd",0.85),
+        ("wireframing",0.9),
+        ("design systems",0.85),
+        ("typography",0.8),
+        ("color theory",0.8),
+        ("css",0.75),
+        ("html",0.7)],
+    "ux design":           [("user research",0.95),
+        ("usability testing",0.9),
+        ("wireframing",0.9),
+        ("prototyping",0.85),
+        ("information architecture",0.85),
+        ("figma",0.9),
+        ("accessibility",0.8)],
+    "product design":      [("figma",0.95),
+        ("wireframing",0.9),
+        ("prototyping",0.9),
+        ("user research",0.85),
+        ("design systems",0.85),
+        ("usability testing",0.8),
+        ("accessibility",0.75)],
     "figma":               [("wireframing",0.9),("prototyping",0.9),("design systems",0.8),("typography",0.75),("color theory",0.7)],
     # big data
-    "big data":            [("apache spark",0.95),("hadoop",0.85),("kafka",0.85),("hive",0.8),("airflow",0.8),("scala",0.75),("python",0.9),("etl",0.9),("data lake",0.85),("databricks",0.75),("data pipelines",0.9)],
-    "apache spark":        [("hadoop",0.8),("scala",0.8),("python",0.85),("data lake",0.75),("databricks",0.75),("kafka",0.7),("hive",0.7),("etl",0.85)],
+    "big data":            [("apache spark",0.95),
+        ("hadoop",0.85),
+        ("kafka",0.85),
+        ("hive",0.8),
+        ("airflow",0.8),
+        ("scala",0.75),
+        ("python",0.9),
+        ("etl",0.9),
+        ("data lake",0.85),
+        ("databricks",0.75),
+        ("data pipelines",0.9)],
+    "apache spark":        [("hadoop",0.8),
+        ("scala",0.8),
+        ("python",0.85),
+        ("data lake",0.75),
+        ("databricks",0.75),
+        ("kafka",0.7),
+        ("hive",0.7),
+        ("etl",0.85)],
     "kafka":               [("apache spark",0.75),("data pipelines",0.9),("etl",0.8),("python",0.8)],
     "airflow":             [("data pipelines",0.95),("etl",0.9),("python",0.9),("apache spark",0.7),("sql",0.75)],
     # qa
-    "qa":                  [("manual testing",0.9),("selenium",0.85),("api testing",0.85),("postman",0.85),("jira",0.85),("test planning",0.9),("bug tracking",0.9),("automation",0.75)],
-    "qa & testing":        [("manual testing",0.9),("selenium",0.85),("cypress",0.75),("jest",0.7),("junit",0.7),("testng",0.7),("api testing",0.85),("postman",0.85),("performance testing",0.75),("jmeter",0.7),("test planning",0.9),("bug tracking",0.9),("jira",0.85),("automation",0.8),("bdd/tdd",0.7)],
-    "test automation":     [("selenium",0.9),("cypress",0.85),("jest",0.8),("junit",0.8),("testng",0.75),("python",0.75),("java",0.75),("bdd/tdd",0.8),("git",0.85)],
-    "software testing":    [("manual testing",0.9),("selenium",0.8),("api testing",0.85),("postman",0.85),("jmeter",0.7),("test planning",0.9),("jira",0.8)],
+    "qa":                  [("manual testing",0.9),
+        ("selenium",0.85),
+        ("api testing",0.85),
+        ("postman",0.85),
+        ("jira",0.85),
+        ("test planning",0.9),
+        ("bug tracking",0.9),
+        ("automation",0.75)],
+    "qa & testing": [
+        ("manual testing",0.9), ("selenium",0.85), ("cypress",0.75),
+        ("jest",0.7), ("junit",0.7), ("testng",0.7), ("api testing",0.85),
+        ("postman",0.85), ("performance testing",0.75), ("jmeter",0.7),
+        ("test planning",0.9), ("bug tracking",0.9), ("jira",0.85),
+        ("automation",0.8), ("bdd/tdd",0.7)
+    ],
+    "test automation":     [("selenium",0.9),
+        ("cypress",0.85),
+        ("jest",0.8),
+        ("junit",0.8),
+        ("testng",0.75),
+        ("python",0.75),
+        ("java",0.75),
+        ("bdd/tdd",0.8),
+        ("git",0.85)],
+    "software testing":    [("manual testing",0.9),
+        ("selenium",0.8),
+        ("api testing",0.85),
+        ("postman",0.85),
+        ("jmeter",0.7),
+        ("test planning",0.9),
+        ("jira",0.8)],
     # languages
     "python":              [("pandas",0.85),("numpy",0.85),("matplotlib",0.8),("flask",0.7),("scikit-learn",0.7),("git",0.9)],
     "java":                [("oop",0.95),("design patterns",0.85),("junit",0.8),("git",0.9)],
@@ -372,9 +642,9 @@ stop_words = {
 }
 
 
-# ---------------------------------------------------------------------------
+
 # text processing helpers
-# ---------------------------------------------------------------------------
+
 
 def expand_abbrevs(text):
     """Replace short abbreviations with full forms so matching works better."""
@@ -428,9 +698,9 @@ def cosine_similarity(vec_a, vec_b):
     return dot / (mag_a * mag_b)
 
 
-# ---------------------------------------------------------------------------
+
 # skill matching
-# ---------------------------------------------------------------------------
+
 
 def skill_found_in_text(skill, text_lower, text_expanded):
     """
@@ -476,7 +746,7 @@ def classify_resume_skills(resume_text, required_skills):
     if not resume_text:
         return [], [], list(required_skills), set()
 
-    text_lower    = resume_text.lower()
+    text_lower = resume_text.lower()
     text_expanded = expand_abbrevs(resume_text)
 
     # find all domain keywords mentioned in the resume
@@ -505,7 +775,7 @@ def classify_resume_skills(resume_text, required_skills):
     min_conf = 0.5
 
     for skill in required_skills:
-        s_lower    = skill.lower().strip()
+        s_lower = skill.lower().strip()
         s_canonical = alias_lookup.get(s_lower, s_lower)
 
         if skill_found_in_text(s_lower, text_lower, text_expanded):
@@ -544,27 +814,27 @@ def compute_match_ratio(matched, related, all_skills):
     return min(1.0, weighted / max(1, len(all_skills)))
 
 
-# ---------------------------------------------------------------------------
+
 # feature engineering
-# ---------------------------------------------------------------------------
+
 
 def extract_features(resume_text, domain, skills_for_domain):
     """
     Compute the 8 features the ML model was trained on.
     These must match exactly what was used in train_model.py.
     """
-    corpus        = [" ".join(skills) for skills in domain_skills.values()]
-    idf           = build_idf(corpus)
+    corpus = [" ".join(skills) for skills in domain_skills.values()]
+    idf = build_idf(corpus)
     resume_tokens = tokenize(resume_text or "no content")
     domain_tokens = tokenize(" ".join(skills_for_domain))
-    resume_vec    = build_tfidf(build_tf(resume_tokens), idf)
-    domain_vec    = build_tfidf(build_tf(domain_tokens), idf)
-    cosine        = cosine_similarity(resume_vec, domain_vec)
+    resume_vec = build_tfidf(build_tf(resume_tokens), idf)
+    domain_vec = build_tfidf(build_tf(domain_tokens), idf)
+    cosine = cosine_similarity(resume_vec, domain_vec)
 
     matched, related, missing, triggers = classify_resume_skills(resume_text, skills_for_domain)
     related_names = [r["skill"] for r in related]
 
-    match_ratio   = compute_match_ratio(matched, related_names, skills_for_domain)
+    match_ratio = compute_match_ratio(matched, related_names, skills_for_domain)
     skill_density = min(1.0, len(matched) / max(1, len(resume_tokens)) * 100)
     _, exp_bonus  = detect_experience_level(resume_text)
 
@@ -572,16 +842,20 @@ def extract_features(resume_text, domain, skills_for_domain):
     resume_word_set  = set(resume_tokens)
     keyword_overlap  = len(domain_word_set & resume_word_set) / max(1, len(domain_word_set))
 
-    seniority_words  = ["senior","lead","principal","staff","architect","director","vp","manager","head","specialist","junior","intern","entry","fresher"]
+    seniority_words = [
+        "senior", "lead", "principal", "staff", "architect",
+        "director", "vp", "manager", "head", "specialist",
+        "junior", "intern", "entry", "fresher"
+    ]
     seniority_count  = sum(1 for w in seniority_words if w in (resume_text or "").lower())
     seniority_signal = min(1.0, seniority_count / 3)
 
-    domain_weights   = [resume_vec.get(t, 0) for t in domain_tokens]
+    domain_weights = [resume_vec.get(t, 0) for t in domain_tokens]
     domain_term_freq = sum(domain_weights) / max(1, len(domain_weights))
 
-    top_half    = skills_for_domain[: len(skills_for_domain) // 2 + 1]
-    tl          = (resume_text or "").lower()
-    te          = expand_abbrevs(resume_text or "")
+    top_half = skills_for_domain[: len(skills_for_domain) // 2 + 1]
+    tl = (resume_text or "").lower()
+    te = expand_abbrevs(resume_text or "")
     skill_depth = sum(1 for s in top_half if skill_found_in_text(s.lower(), tl, te)) / max(1, len(top_half))
 
     features = [match_ratio, cosine, skill_density, exp_bonus, keyword_overlap, seniority_signal, domain_term_freq, skill_depth]
@@ -593,13 +867,13 @@ def detect_experience_level(text):
     lower = (text or "").lower()
 
     senior_signals = ["senior","lead","principal","staff","architect","director","vp","chief","10+","8+ years","9+ years"]
-    mid_signals    = ["mid","3+ years","4+ years","5+ years","specialist","engineer ii"]
+    mid_signals = ["mid","3+ years","4+ years","5+ years","specialist","engineer ii"]
     junior_signals = ["junior","intern","entry","fresher","graduate","new grad","0-1","associate"]
 
     senior_count = sum(1 for w in senior_signals if w in lower)
-    mid_count    = sum(1 for w in mid_signals    if w in lower)
+    mid_count = sum(1 for w in mid_signals    if w in lower)
     junior_count = sum(1 for w in junior_signals if w in lower)
-    year_count   = len(re.findall(r"\b(19|20)\d{2}\b", text or ""))
+    year_count = len(re.findall(r"\b(19|20)\d{2}\b", text or ""))
 
     if senior_count > 0 or year_count >= 4:
         return "Senior",      0.90
@@ -610,9 +884,9 @@ def detect_experience_level(text):
     return "Mid-Level", 0.55
 
 
-# ---------------------------------------------------------------------------
+
 # text extraction from uploaded files
-# ---------------------------------------------------------------------------
+
 
 def read_resume_file(filepath, filename):
     """Read text from a .txt, .pdf, or .docx resume file."""
@@ -648,9 +922,9 @@ def read_resume_file(filepath, filename):
     return ""
 
 
-# ---------------------------------------------------------------------------
+
 # suggestions and summary
-# ---------------------------------------------------------------------------
+
 
 skill_tips = {
     "Python":     "Complete a Python course on Coursera (Python for Everybody is great for beginners).",
@@ -721,9 +995,9 @@ def build_summary(domain, experience, matched_skills, related_skills, score):
     return options[int(score / 34) % len(options)]
 
 
-# ---------------------------------------------------------------------------
+
 # job description keyword analysis
-# ---------------------------------------------------------------------------
+
 
 jd_stop_words = {
     "a","an","the","and","or","but","in","on","at","to","for","of","with","by",
@@ -752,7 +1026,7 @@ def analyze_job_description(jd_text, resume_text):
     if not jd_text or not jd_text.strip():
         return None
 
-    jd_lower     = jd_text.lower()
+    jd_lower = jd_text.lower()
     resume_lower = resume_text.lower()
 
     # check all known tech skills against the JD
@@ -834,9 +1108,9 @@ def analyze_job_description(jd_text, resume_text):
     }
 
 
-# ---------------------------------------------------------------------------
+
 # cors
-# ---------------------------------------------------------------------------
+
 
 def add_cors(response):
     response.headers["Access-Control-Allow-Origin"]  = "*"
@@ -849,18 +1123,38 @@ def after_request(response):
     return add_cors(response)
 
 
-# ---------------------------------------------------------------------------
-# user database (dataset/users.csv)
-# ---------------------------------------------------------------------------
 
-user_fields = ["user_id", "username", "email", "password_hash", "created_at", "last_login"]
+# user database (SQLite3)
+# Much better than CSV — faster, safer, and works properly on Render.
+# SQLite3 is built into Python so no extra packages needed.
 
 
-def ensure_users_file():
-    """Create the CSV with headers if it doesn't exist yet."""
-    if not os.path.exists(users_csv):
-        with open(users_csv, "w", newline="") as f:
-            csv.DictWriter(f, fieldnames=user_fields).writeheader()
+def get_db():
+    """Open a connection to the SQLite database."""
+    conn = sqlite3.connect(users_db)
+    conn.row_factory = sqlite3.Row  # lets us access columns by name like a dict
+    return conn
+
+
+def init_db():
+    """Create the users table if it doesn't exist yet."""
+    conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id       TEXT PRIMARY KEY,
+            username      TEXT UNIQUE NOT NULL,
+            email         TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at    TEXT NOT NULL,
+            last_login    TEXT DEFAULT ""
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+# Create the table when the app starts
+init_db()
 
 
 def hash_password(password):
@@ -869,54 +1163,84 @@ def hash_password(password):
     return hashlib.sha256(salted.encode()).hexdigest()
 
 
-def load_users():
-    """Read all users from the CSV file."""
-    ensure_users_file()
-    rows = []
-    with open(users_csv, "r", newline="") as f:
-        for row in csv.DictReader(f):
-            rows.append(row)
-    return rows
-
-
-def save_users(users):
-    """Write the full user list back to the CSV file."""
-    ensure_users_file()
-    with open(users_csv, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=user_fields)
-        writer.writeheader()
-        writer.writerows(users)
-
-
 def find_user(identifier):
-    """Look up a user by username or email. Returns None if not found."""
+    """Look up a user by username or email. Returns a dict or None."""
     search = identifier.strip().lower()
-    for user in load_users():
-        if user["username"].lower() == search or user["email"].lower() == search:
-            return user
-    return None
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?",
+        (search, search)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def username_taken(username):
-    return any(u["username"].lower() == username.strip().lower() for u in load_users())
+    """Check if a username already exists."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT 1 FROM users WHERE LOWER(username) = ?",
+        (username.strip().lower(),)
+    ).fetchone()
+    conn.close()
+    return row is not None
 
 
 def email_registered(email):
-    return any(u["email"].lower() == email.strip().lower() for u in load_users())
+    """Check if an email is already registered."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT 1 FROM users WHERE LOWER(email) = ?",
+        (email.strip().lower(),)
+    ).fetchone()
+    conn.close()
+    return row is not None
+
+
+def create_user(user_id, username, email, password_hash, created_at):
+    """Insert a new user into the database."""
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO users (user_id, username, email, password_hash, created_at, last_login) VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, username, email, password_hash, created_at, "")
+    )
+    conn.commit()
+    conn.close()
 
 
 def update_last_login(user_id):
-    """Stamp the last login time for a user after they sign in."""
-    users = load_users()
-    for u in users:
-        if u["user_id"] == user_id:
-            u["last_login"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    save_users(users)
+    """Stamp the last login time after a user signs in."""
+    conn = get_db()
+    conn.execute(
+        "UPDATE users SET last_login = ? WHERE user_id = ?",
+        (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_id)
+    )
+    conn.commit()
+    conn.close()
 
 
-# ---------------------------------------------------------------------------
+def update_password(user_id, new_hash):
+    """Save a new password hash for a user."""
+    conn = get_db()
+    conn.execute(
+        "UPDATE users SET password_hash = ? WHERE user_id = ?",
+        (new_hash, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_all_users():
+    """Return all users as a list of dicts (for the admin endpoint)."""
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM users ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+
 # auth routes
-# ---------------------------------------------------------------------------
+
 
 @app.route("/login")
 def login_page():
@@ -938,9 +1262,9 @@ def logout():
 
 @app.route("/api/auth/register", methods=["POST"])
 def register_user():
-    data     = request.get_json(force=True) or {}
+    data = request.get_json(force=True) or {}
     username = (data.get("username") or "").strip()
-    email    = (data.get("email")    or "").strip()
+    email = (data.get("email")    or "").strip()
     password = (data.get("password") or "").strip()
 
     if not username or not email or not password:
@@ -957,17 +1281,13 @@ def register_user():
         return jsonify({"success": False, "error": "An account with that email already exists."}), 409
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    new_user = {
-        "user_id":       str(uuid.uuid4())[:8],
-        "username":      username,
-        "email":         email,
-        "password_hash": hash_password(password),
-        "created_at":    now,
-        "last_login":    "",
-    }
-    users = load_users()
-    users.append(new_user)
-    save_users(users)
+    create_user(
+        user_id = str(uuid.uuid4())[:8],
+        username = username,
+        email = email,
+        password_hash = hash_password(password),
+        created_at = now
+    )
 
     print("New user registered: " + username + " at " + now)
     return jsonify({"success": True, "message": "Welcome, " + username + "! Your account has been created."})
@@ -975,7 +1295,7 @@ def register_user():
 
 @app.route("/api/auth/login", methods=["POST"])
 def login_user():
-    data     = request.get_json(force=True) or {}
+    data = request.get_json(force=True) or {}
     username = (data.get("username") or "").strip()
     password = (data.get("password") or "").strip()
     remember = bool(data.get("remember", False))
@@ -1018,20 +1338,15 @@ def forgot_password():
         return jsonify({"success": False, "error": "No account found with that email address."}), 404
 
     # generate a readable temporary password like "Sky7#Fox2"
-    import random as _random
-    words   = ["Sky","Fox","Oak","Gem","Arc","Bay","Ray","Ivy","Rio","Sol"]
-    digits  = str(_random.randint(10, 99))
-    special = _random.choice(["#", "@", "!", "*"])
-    word1   = _random.choice(words)
-    word2   = _random.choice(words)
+    words = ["Sky", "Fox", "Oak", "Gem", "Arc", "Bay", "Ray", "Ivy", "Rio", "Sol"]
+    digits  = str(random.randint(10, 99))
+    special = random.choice(["#", "@", "!", "*"])
+    word1 = random.choice(words)
+    word2 = random.choice(words)
     temp_password = word1 + digits + special + word2
 
-    # save the hashed version to the CSV
-    users = load_users()
-    for u in users:
-        if u["user_id"] == user["user_id"]:
-            u["password_hash"] = hash_password(temp_password)
-    save_users(users)
+    # save the new hashed password to the database
+    update_password(user["user_id"], hash_password(temp_password))
 
     print("Password reset for: " + user["username"] + " (" + email + ")")
 
@@ -1042,7 +1357,8 @@ def forgot_password():
     })
 
 
-
+@app.route("/api/auth/me")
+def get_current_user():
     if not session.get("user"):
         return jsonify({"logged_in": False}), 401
     return jsonify({
@@ -1054,15 +1370,15 @@ def forgot_password():
 
 @app.route("/api/auth/users")
 def list_users():
-    all_users = load_users()
+    all_users = load_all_users()
     safe = [{"user_id": u["user_id"], "username": u["username"], "email": u["email"],
              "created_at": u["created_at"], "last_login": u["last_login"]} for u in all_users]
     return jsonify({"total": len(safe), "users": safe})
 
 
-# ---------------------------------------------------------------------------
+
 # main routes
-# ---------------------------------------------------------------------------
+
 
 @app.route("/")
 def home():
@@ -1104,12 +1420,12 @@ def analyze_resume():
 
     uploaded_file = request.files["file"]
     target_domain = request.form.get("domain", "Data Science")
-    jd_text       = (request.form.get("job_description") or "").strip()
+    jd_text = (request.form.get("job_description") or "").strip()
 
     if not uploaded_file.filename:
         return jsonify({"error": "Please select a file before submitting."}), 400
 
-    file_ext    = uploaded_file.filename.rsplit(".", 1)[-1].lower() if "." in uploaded_file.filename else ""
+    file_ext = uploaded_file.filename.rsplit(".", 1)[-1].lower() if "." in uploaded_file.filename else ""
     image_types = {"png","jpg","jpeg","gif","bmp","webp","svg","tiff","ico","heic","heif"}
 
     if file_ext in image_types:
@@ -1137,10 +1453,10 @@ def analyze_resume():
     uploaded_file.save(temp_path)
 
     try:
-        resume_text   = read_resume_file(temp_path, safe_name)
+        resume_text = read_resume_file(temp_path, safe_name)
         skills_needed = domain_skills.get(target_domain, domain_skills["Data Science"])
-        cleaned       = (resume_text or "").strip()
-        word_count    = len(cleaned.split())
+        cleaned = (resume_text or "").strip()
+        word_count = len(cleaned.split())
 
         if not cleaned:
             return jsonify({
@@ -1231,19 +1547,14 @@ def analyze_resume():
             pass
 
 
-# ---------------------------------------------------------------------------
+
 # start server
-# ---------------------------------------------------------------------------
+
 
 if __name__ == "__main__":
-    import os as _os
-    print("")
     print("ResumeML is starting...")
-    print("Skill triggers loaded: " + str(len(skill_relationships)))
-    print("Skill aliases loaded:  " + str(len(skill_aliases)))
-    print("")
-    # Use PORT env variable if set (Render sets this automatically)
-    # Fall back to 5000 for local development
-    port = int(_os.environ.get("PORT", 5000))
-    debug = _os.environ.get("RENDER") is None  # debug on locally, off on Render
+    print("Skill triggers loaded:", len(skill_relationships))
+    print("Skill aliases loaded: ", len(skill_aliases))
+    port  = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("RENDER") is None
     app.run(host="0.0.0.0", port=port, debug=debug)
