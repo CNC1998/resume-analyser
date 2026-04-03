@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>ResumeML — ML-Powered Resume Analyzer</title>
+<title>Powered Resume Analyzer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -15,8 +15,8 @@
 <nav id="navbar">
   <div class="nav-inner">
     <div class="nav-brand" onclick="showPage('home')">
-      <div class="brand-icon">ML</div>
-      <span class="brand-name">ResumeML</span>
+      <div class="brand-icon">RA</div>
+      <span class="brand-name">Resume Analaser</span>
     </div>
 
     <!-- hamburger shows only on mobile -->
@@ -33,7 +33,7 @@
       <button class="nav-btn hidden" data-page="history" id="nav-history" onclick="showPage('history');closeMobileMenu()">History</button>
       <div class="nav-sep"></div>
       <button class="coach-btn" id="coachToggle" onclick="toggleChat();closeMobileMenu()">
-        <span class="coach-icon">⬡</span> ML Coach
+        <span class="coach-icon">⬡</span> Coach
       </button>
       <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">🌙</button>
       <a href="/logout" class="logout-btn">⎋ Logout</a>
@@ -49,8 +49,8 @@
   <div class="home-wrap">
     <div class="home-hero">
       <div class="home-hero-icon">⬡</div>
-      <h1 class="home-title">ResumeML</h1>
-      <p class="home-subtitle">AI-Powered Resume Analyzer &amp; Smart Job Matching System</p>
+      <h1 class="home-title">Resume Analyser</h1>
+      <p class="home-subtitle"> Smart Resume Analyzer &amp; Personalized Career Guidance</p>
       <p class="home-desc">Upload your resume, choose your target domain, and get an instant ML-based analysis — skill matching, job recommendations, and personalized improvement tips.</p>
       <button class="btn-primary" onclick="showPage('upload')">Analyze My Resume →</button>
     </div>
@@ -147,7 +147,7 @@
     <div class="chat-header-left">
       <div class="chat-avatar">ML</div>
       <div>
-        <div class="chat-title">ML Career Coach</div>
+        <div class="chat-title">Career Coach</div>
         <div class="chat-status"><span class="status-dot"></span>Rule-based NLP · No API · Always on</div>
       </div>
     </div>
